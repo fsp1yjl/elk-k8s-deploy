@@ -1,0 +1,26 @@
+{
+  "EsYaml": {
+    "PV": [
+      {"Storage":  "10Gi", "Node":"001"},
+      {"Storage":  "10Gi", "Node":"001"}
+    ],
+    "Image": "harbor.cestc.com/paas/elasticsearch:7.6.1-ik",
+    "Ingress": "paas-es.oc25.wlc.cecloudcs.com",
+    "Storage": "10Gi"
+  },
+  "FilebeatYaml": {
+    "Image": "elastic/filebeat:7.3.1"
+  },
+  "LogstashYaml": {
+    "Image": "elastic/logstash:7.3.1"
+  },
+  "KibanaYaml": {
+    "Image": "kibana:7.3.1",
+    "Ingress": "kibana.wlc102.intranet.cecloudcs.com",
+    "Affinity": "true",
+    "AffinityNode": "kibana-node1"
+  }
+}
+
+
+

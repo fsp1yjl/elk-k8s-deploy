@@ -1,0 +1,193 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: local-storage-es
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+{{- range $i, $v := .PV}}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-storage-pv-{{$i}}
+  namespace: logging
+  labels:
+    name: local-storage-pv-{{$i}}
+spec:
+  capacity:
+    storage: {{$v.Storage}}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  claimRef:
+    name: data-es7-cluster-{{$i}}
+    namespace: logging
+  local:
+    path: /data/localpv/es7-{{$i}}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{$v.Node}} # 此处需替换为文档开始选定的Node名
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: data-es7-cluster-{{$i}}
+  namespace: logging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-storage
+  selector:
+    matchLabels:
+      name: local-storage-pv-{{$i}}
+  resources:
+    requests:
+      storage: {{$v.Storage}}
+
+{{- end}}
+
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: es7-cluster
+  namespace: logging
+spec:
+  serviceName: elasticsearch7
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch7
+  template:
+    metadata:
+      labels:
+        app: elasticsearch7
+    spec:
+      containers:
+        - name: elasticsearch7
+          image: {{$.Image}}
+          #image: harbor.cestc.com/paas/elasticsearch:7.6.1-ik
+          #image: docker.elastic.co/elasticsearch/elasticsearch:7.6.1
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: 1000m
+            requests:
+              cpu: 100m
+          ports:
+            - containerPort: 9200
+              name: rest
+              protocol: TCP
+            - containerPort: 9300
+              name: inter-node
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+          env:
+            - name: cluster.name
+              value: k8s-logs
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: discovery.zen.minimum_master_nodes # 含义请参阅官方 Elasticsearch 文档
+              value: "2"
+            - name: discovery.seed_hosts # 含义请参阅官方 Elasticsearch 文档
+              value: "es7-cluster-0.elasticsearch7,es7-cluster-1.elasticsearch7,es7-cluster-2.elasticsearch7"
+            - name: cluster.initial_master_nodes # 初始化的 master 节点，旧版本相关配置 discovery.zen.minimum_master_nodes
+              value: "es7-cluster-0,es7-cluster-1,es7-cluster-2" # 含义请参阅官方 Elasticsearch 文档
+            - name: ES_JAVA_OPTS
+              value: "-Xms4g -Xmx4g" # 根据具体资源及需求调整
+      initContainers:
+        - name: fix-permissions
+          #image: harbor.wlc.cecdev.cn/library/busybox
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+        - name: increase-vm-max-map
+          image: busybox
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+        - name: increase-fd-ulimit
+          image: busybox
+          command: ["sh", "-c", "ulimit -n 65536"]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: "local-storage"
+        resources:
+          requests:
+            storage: {{$.Storage}}
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: elasticsearch7
+  namespace: logging
+  labels:
+    app: elasticsearch7
+spec:
+  selector:
+    app: elasticsearch7
+  clusterIP: None
+  ports:
+    - port: 9200
+      name: rest
+    - port: 9300
+      name: inter-node
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: elasticsearch7-svc-for-ingress
+  namespace: logging
+  labels:
+    app: elasticsearch7
+spec:
+  selector:
+    app: elasticsearch7
+  type: ClusterIP
+  ports:
+    - port: 9200
+      name: rest
+    - port: 9300
+      name: inter-node
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: elasticsearch7-ingress
+  namespace: logging
+spec:
+  rules:
+    - host: {{$.Ingress}}
+      http:
+        paths:
+          - backend:
+              serviceName: elasticsearch7-svc-for-ingress
+              servicePort: 9200
+            path: /

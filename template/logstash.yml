@@ -1,0 +1,181 @@
+#logstash-config-cm.yml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config-cm
+  namespace: logging
+data:
+  containers.conf: |
+    input {
+        beats {
+        port => 8080  #filebeat连接端口
+      }
+    }
+
+    filter {
+        # 管控标准输出
+        if [fields][logType] == "manage-container" {
+             ruby {
+                 code => "
+                     path = event.get('log')['file']['path']
+                     puts format('manage-stdout path  = %<path>s', path: path)
+                     if (!path.nil?) && (!path.empty?)
+                         pathinfo = path.split('/')
+                         podinfo = pathinfo[4]
+                         containerName = pathinfo[5]
+
+
+                         event.set('containerName', containerName)
+
+                         arr = podinfo.split('_')
+
+                         event.set('namespace', arr[0])
+                     end
+                 "
+             }
+        } else if [fields][logType] == "manage-log" {
+          #管控文件日志
+          ruby {
+                  code => "
+                      path = event.get('log')['file']['path']
+                       puts format('pathddd = %<path>s', path: path)
+                      if (!path.nil?) && (!path.empty?)
+                          pathinfo = path.split('/')
+                          productName = pathinfo[5]
+                          #component = pathinfo[7]
+                          #puts format('productName')
+                          #event.set('component', component)
+                          event.set('productName', productName)
+                      end
+                  "
+          }
+
+        } else if [fields][logType] == "instance-container" {
+            # 实例标准输出
+            # /var/log/pods/<namespace>_<pod_name>_<pod_id>/ <container_name>/*.log
+            ruby  {
+               code => "
+                     path = event.get('log')['file']['path']
+                     #puts format('path = %<path>s', path: path)
+                     if (!path.nil?) && (!path.empty?)
+                         pathinfo = path.split('/')
+                         podinfo = pathinfo[4]
+                         containerName = pathinfo[5]
+
+
+                         event.set('containerName', containerName)
+
+                         arr = podinfo.split('_')
+
+                         event.set('namespace', arr[0])
+                     end
+                 "
+            }
+        } else if [fields][logType] == "instance-log" {
+            # 实例文件日志
+            # /var/log/ccos/logs/dm/instance/instance-id/dmdb/**/*.log
+            ruby  {
+              code => "
+                      path = event.get('log')['file']['path']
+                       puts format('path = %<path>s', path: path)
+                      if (!path.nil?) && (!path.empty?)
+                          pathinfo = path.split('/')
+                          productName = pathinfo[5]
+                          #instanceType = pathinfo[6]
+                          instanceId = pathinfo[7]
+
+                          event.set('productName', productName)
+                          event.set('instanceType', instanceType)
+                          event.set('instanceId', instanceId)
+                      end
+                  "
+            }
+        }
+
+    }
+
+
+    output {
+
+         if [fields][logType] == "manage-log" {
+             elasticsearch {
+                   hosts => ["http://elasticsearch7:9200"]
+                  index => "manage-%{productName}-%{+YYYY.MM.dd}"
+                  }
+
+        } else if [fields][logType] == "manage-container" {
+
+          elasticsearch {
+           hosts => ["http://elasticsearch7:9200"]
+          index => "manage-%{namespace}-%{+YYYY.MM.dd}"
+          }
+        } else if [fields][logType] == "instance-log" {
+                elasticsearch {
+                   hosts => ["http://elasticsearch7:9200"]
+                  index => "instance-%{productName}-%{[fields][logComponent]}-%{instanceId}-%{+YYYY.MM.dd}"
+          }
+
+        } else if [fields][logType]== "instance-container" {
+                  elasticsearch {
+                       hosts => ["http://elasticsearch7:9200"]
+                      index => "instance-%{namespace}-%{containerName}-%{+YYYY.MM.dd}"
+                  }
+        }
+    }
+
+
+     output {
+          elasticsearch {
+            hosts => ["http://elasticsearch7:9200"]
+            index => "rdb-dm-log--%{+YYYY.MM.dd}"
+          }
+     }
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: logging
+  name: paas-logstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paas-logstash
+  template:
+    metadata:
+      labels:
+        app: paas-logstash
+    spec:
+      containers:
+        - name: logstash
+          image: {{$.Image}}
+          volumeMounts:
+            - name: config
+              mountPath: /opt/logstash/config/containers.conf
+              subPath: containers.conf
+          command:
+            - "/bin/sh"
+            - "-c"
+            - "cat /opt/logstash/config/containers.conf &&  /opt/logstash/bin/logstash -f /opt/logstash/config/containers.conf"
+      volumes:
+        - name: config
+          configMap:
+            name: logstash-config-cm
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: paas-logstash
+  name: logstash
+  namespace: logging
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: paas-logstash
+  type: ClusterIP
