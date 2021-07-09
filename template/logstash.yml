@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: logstash-config-cm
-  namespace: logging
+  namespace: {{ $.Namespace }}
 data:
   containers.conf: |
     input {
@@ -136,7 +136,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: logging
+  namespace: {{ $.Namespace }}
   name: paas-logstash
 spec:
   replicas: 1
@@ -171,7 +171,7 @@ metadata:
   labels:
     app: paas-logstash
   name: logstash
-  namespace: logging
+  namespace: {{ $.Namespace }}
 spec:
   ports:
     - port: 8080

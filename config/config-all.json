@@ -21,7 +21,9 @@
   "KibanaYaml": {
     "Namespace": "logging",
     "Image": "kibana:7.3.1",
-    "Ingress": "kibana.wlc102.intranet.cecloudcs.com"
+    "Ingress": "kibana.wlc102.intranet.cecloudcs.com",
+    "Affinity": "true",
+    "AffinityNode": "kibana-node1"
   }
 }
 

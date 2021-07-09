@@ -98,6 +98,50 @@ spec:
   resources:
     requests:
       storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-storage-pv-2
+  namespace: logging
+  labels:
+    name: local-storage-pv-2
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  claimRef:
+    name: data-es7-cluster-2
+    namespace: logging
+  local:
+    path: /data/localpv/es7-2
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - 001 # 此处需替换为文档开始选定的Node名
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: data-es7-cluster-2
+  namespace: logging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-storage
+  selector:
+    matchLabels:
+      name: local-storage-pv-2
+  resources:
+    requests:
+      storage: 10Gi
 
 
 ---

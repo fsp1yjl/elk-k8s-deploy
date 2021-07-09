@@ -41,14 +41,17 @@ type EsYaml struct {
 	Image string `json:"Image"`
 	Ingress string `json:"Ingress"`
 	Storage string  `json:"Storage"`
+	Namespace string `json:"Namespace"`
 }
 
 type FilebeatYaml struct {
 	Image string `json:"Image"`
+	Namespace string `json:"Namespace"`
 }
 
 type LogstashYaml struct {
 	Image string `json:"Image"`
+	Namespace string `json:"Namespace"`
 }
 
 type KibanaYaml struct {
@@ -56,6 +59,7 @@ type KibanaYaml struct {
 	Ingress string  `json:"Ingress"`
 	Affinity bool `json:"Affinity"`
 	AffinityNode string `json:"AffinityNode"`
+	Namespace string `json:"Namespace"`
 }
 
 
