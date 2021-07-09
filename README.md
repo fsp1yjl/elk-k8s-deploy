@@ -67,12 +67,22 @@ kubectl get daemonset filebeat -n logging
  kubectl get deployment kibana  -n logging
 ```
 
-## 生成elfk 部署yaml  
+## elfk yaml  部署
 
+### 生成yaml
 配置好config/config.json 这个配置文件，执行如下：
 go run main.go 
 
-生成的yaml会放在tmp目录下，scp tmp到对应集群节点上，
+生成的yaml放在tmp目录下， scp到目标集群的节点上 
+
+### k8s集群节点执行部署
+
+在local-pv目标节点上，创建local-pv目录：
+mkdir -p /data/localpv/es7-0 /data/localpv/es7-1 /data/localpv/es7-2
+chmod -R 777 /data/localpv/
+
+
+
 kubectl apply -f tmp 可以一次性部署elfk 
 也可以分别执行各自的yaml分别部署es, filebeat, logstash, kibana:
 kubectl apply -f  es-final.yml
